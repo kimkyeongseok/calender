@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자 페이지 - 일정 관리</title>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+		header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+		nav { display: flex; gap: 10px; }
+		nav button { padding: 8px 16px; border:none; border-radius:4px; cursor:pointer; }
+		nav .active { background:#008CBA; color:#fff; }
+        h1 { text-align: center; }
+        #stats { margin-bottom: 20px; }
+        table { width:100%; border-collapse:collapse; margin-top:10px; }
+        th, td { border:1px solid #ccc; padding:8px; text-align:left; }
+        #adminPagination { text-align:center; margin:20px 0; }
+        .btn { padding:5px 10px; margin:2px; cursor:pointer; border:none; border-radius:4px; }
+        .btn-add { background:#008CBA; color:#fff; }
+    </style>
+</head>
+<body>
+ <header>
+    <nav>
+      <button id="menuEvents" class="active">전체 일정</button>
+      <button id="menuChart">통계 차트</button>
+      <button id="menuUsers">사용자 관리</button>
+    </nav>
+  </header>
+    <h1>관리자 페이지</h1>
+    <div id="stats"></div>
+    <table id="adminTable">
+        <thead>
+            <tr><th>사용자</th><th>제목</th><th>시작</th><th>종료</th></tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <div id="adminPagination"></div>
+    <script>
+        let adminEvents = [];
+        let adminCurrentPage = 1;
+        let adminPageSize = 10;
+        let adminPageButtons = 5;
+
+        $(document).ready(function() {
+            loadAdminEvents();
+			$('#menuEvents').click(() => window.location.href = 'admin_list.html');
+			$('#menuChart').click(() => window.location.href = 'chat.html');
+			$('#menuUsers').click(() => window.location.href = 'user_list.html');
+        });
+
+        function loadAdminEvents() {
+            $.get('http://localhost/admin.php', { action: 'stats' }).done(res => {
+                $('#stats').html(`
+                    <p>전체 일정: ${res.total}</p>
+                    <ul>
+                        ${res.byUser.map(u => `<li>${u.user}: ${u.count}</li>`).join('')}
+                    </ul>
+                `);
+                adminEvents = res.events;
+                adminCurrentPage = 1;
+                renderAdminPage();
+            });
+        }
+
+        function renderAdminPage() {
+            const events = adminEvents;
+            const totalPages = Math.ceil(events.length / adminPageSize) || 1;
+            if (adminCurrentPage > totalPages) adminCurrentPage = totalPages;
+            const start = (adminCurrentPage - 1) * adminPageSize;
+            const end = start + adminPageSize;
+            const pageEvents = events.slice(start, end);
+
+            // 테이블 업데이트
+            const tbody = $('#adminTable tbody').empty();
+            pageEvents.forEach(e => {
+                tbody.append(
+                    `<tr>
+                        <td>${e.owner}</td>
+                        <td>${e.title}</td>
+                        <td>${e.start}</td>
+                        <td>${e.end}</td>
+                    </tr>`
+                );
+            });
+
+            // 페이지네이션
+            const pagDiv = $('#adminPagination').empty();
+            const half = Math.floor(adminPageButtons / 2);
+            let startPage = Math.max(1, adminCurrentPage - half);
+            let endPage = Math.min(totalPages, startPage + adminPageButtons - 1);
+            if (endPage - startPage + 1 < adminPageButtons) {
+                startPage = Math.max(1, endPage - adminPageButtons + 1);
+            }
+            if (adminCurrentPage > 1) {
+                pagDiv.append(`<button class="btn" data-page="${adminCurrentPage - 1}">&laquo;</button>`);
+            }
+            for (let p = startPage; p <= endPage; p++) {
+                const cls = p === adminCurrentPage ? 'btn btn-add' : 'btn';
+                pagDiv.append(`<button class="${cls}" data-page="${p}">${p}</button>`);
+            }
+            if (adminCurrentPage < totalPages) {
+                pagDiv.append(`<button class="btn" data-page="${adminCurrentPage + 1}">&raquo;</button>`);
+            }
+            $('#adminPagination button').off('click').on('click', function() {
+                const p = parseInt($(this).attr('data-page'), 10);
+                if (!isNaN(p)) {
+                    adminCurrentPage = p;
+                    renderAdminPage();
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<?php
+// GET action=list|get, POST action=save|delete|copy
+header('Content-Type: application/json');
+require 'db.php';
+$action = $_REQUEST['action'] ?? '';
+$user = $_REQUEST['user'] ?? null;
+
+if ($action === 'list') {
+    if ($user === 'admin') {
+        $sql = 'SELECT * FROM events';
+        $res = $conn->query($sql);
+    } else {
+        $sql = 'SELECT * FROM events WHERE owner = ?';
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param('s', $user);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $stmt->close();
+    }
+    $events = [];
+    while ($row = $res->fetch_assoc()) $events[] = $row;
+    echo json_encode(['events' => $events]);
+    exit;
+}
+
+if ($action === 'get') {
+    $id = $_GET['id'] ?? 0;
+    $sql = 'SELECT * FROM events WHERE id = ?';
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    echo json_encode(['event' => $res->fetch_assoc()]);
+    $stmt->close();
+    exit;
+}
+
+if ($action === 'save') {
+    $evt = $_POST['event'] ?? null;
+    if (!$evt) { echo json_encode(['success' => false]); exit; }
+    if (is_string($evt)) $evt = json_decode($evt, true);
+    $id = $evt['id'] ?? null;
+    $owner = $_POST['user'] ?? null;
+    if ($id) {
+        $sql = 'UPDATE events SET title=?, start=?, end=?, type=?, location=?, participants=? WHERE id=?';
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param('ssssssi',
+            $evt['title'], $evt['start'], $evt['end'],
+            $evt['type'], $evt['location'], $evt['participants'],
+            $id
+        );
+    } else {
+        $sql = 'INSERT INTO events (title, start, end, type, location, participants, owner) VALUES (?,?,?,?,?,?,?)';
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param('sssssss',
+            $evt['title'], $evt['start'], $evt['end'],
+            $evt['type'], $evt['location'], $evt['participants'],
+            $owner
+        );
+    }
+    $stmt->execute();
+    echo json_encode(['success' => true,'query'=>$evt]);
+    $stmt->close();
+    exit;
+}
+
+if ($action === 'copy') {
+    $id = $_POST['id'] ?? $_GET['id'] ?? 0;
+    $sql = 'SELECT title, start, end, type, location, participants, owner FROM events WHERE id = ?';
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $src = $res->fetch_assoc();
+    $stmt->close();
+    if ($src) {
+        $sql2 = 'INSERT INTO events (title, start, end, type, location, participants, owner) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        $stmt2 = $conn->prepare($sql2);
+        $stmt2->bind_param('sssssss',
+            $src['title'], $src['start'], $src['end'],
+            $src['type'], $src['location'], $src['participants'],
+            $src['owner']
+        );
+        $stmt2->execute();
+        echo json_encode(['success' => true, 'newId' => $stmt2->insert_id]);
+        $stmt2->close();
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Event not found']);
+    }
+    exit;
+}
+
+if ($action === 'delete') {
+    $id = $_POST['id'] ?? 0;
+    $sql = 'DELETE FROM events WHERE id = ?';
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    echo json_encode(['success' => true]);
+    $stmt->close();
+    exit;
+}
+
+http_response_code(400);
+echo json_encode(['error' => 'Invalid action']);
+?>

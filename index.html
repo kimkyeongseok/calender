@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>일정 관리 스케줄러</title>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        header { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 10px; }
+        #calendar { max-width: 900px; margin: 0 auto; }
+        #overlay, #loginOverlay { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); z-index: 1000; }
+        #eventForm, #loginForm, #userForm {
+            display: none; position: fixed; top:50%; left:50%; transform: translate(-50%, -50%);
+            background:#fff; padding:20px; box-shadow:0 2px 10px rgba(0,0,0,0.2); z-index:1001;
+            max-height: 100%; overflow: auto; width: 90%; max-width: 800px;
+        }
+        .btn { padding:5px 10px; margin:2px; cursor:pointer; border:none; border-radius:4px; }
+        .btn-add { background:#008CBA; color:#fff; }
+        .btn-delete { background:#f44336; color:#fff; }
+        .btn-copy { background:#6C63FF; color:#fff; }
+        .btn-close { background:none; color:#333; font-size:18px; padding:0; margin:0; position:absolute; top:8px; right:8px; }
+        label { display:inline-block; width:70px; }
+        table { width:100%; border-collapse:collapse; margin-top:10px; }
+        th, td { border:1px solid #ccc; padding:4px; text-align:left; }
+		.fc-scroller,
+        .fc-scrollgrid {
+            overflow: hidden !important;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <button id="loginBtnTop" class="btn btn-add">로그인</button>
+        <button id="adminBtn" class="btn btn-add" style="display:none;">관리자페이지</button>
+        <button id="logoutBtn" class="btn btn-delete" style="display:none;">로그아웃</button>
+    </header>
+
+    <div id="calendar"></div>
+
+    <!-- 일정 폼 -->
+    <div id="overlay"></div>
+    <div id="eventForm">
+        <button class="btn btn-close" onclick="closeForm()">&times;</button>
+        <h3 id="formTitle">일정 등록</h3>
+        <form>
+            <input type="hidden" id="eventIndex">
+            <div><label>종류:</label><select id="type"><option>일반</option><option>교육</option><option>세미나</option><option>회식</option></select></div>
+            <div><label>제목:</label><input type="text" id="title"></div>
+            <div><label>장소:</label><input type="text" id="location"></div>
+            <div><label>시작:</label><input type="datetime-local" id="start"></div>
+            <div><label>종료:</label><input type="datetime-local" id="end"></div>
+            <div><label>참가자:</label><input type="text" id="participants"></div>
+            <div>
+                <button type="button" id="saveBtn" class="btn btn-add">저장</button>
+                <button type="button" id="delBtn" class="btn btn-delete">삭제</button>
+                <button type="button" id="copyBtn" class="btn btn-copy">복사</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 로그인 폼 -->
+    <div id="loginOverlay"></div>
+    <div id="loginForm">
+        <button id="loginClose" class="btn btn-close" onclick="$('#loginOverlay,#loginForm').hide()">&times;</button>
+        <h3>로그인</h3>
+        <div><label>사용자:</label><input type="text" id="loginUser"></div>
+        <div><label>비밀번호:</label><input type="password" id="loginPass"></div>
+        <div><button id="loginSubmit" class="btn btn-add">로그인</button></div>
+        <div id="loginError" style="color:red; display:none;">로그인 실패</div>
+    </div>
+
+    <script>
+        let currentUser = null,
+        calendar;
+		let scheduleChart = null;	
+        // 초기화
+        $(document).ready(function() {
+            const savedAdmin = localStorage.getItem('admin');
+            const savedUser  = sessionStorage.getItem('user');
+            if (savedAdmin) { currentUser = JSON.parse(savedAdmin); $('#adminBtn').show(); }
+            else if (savedUser) { currentUser = JSON.parse(savedUser); }
+            if (currentUser) { $('#loginBtnTop').hide(); $('#logoutBtn').show(); }
+
+            calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+                initialView: 'dayGridMonth', selectable: true,
+                select: info => openForm(null, info),
+                eventClick: info => openForm(info.event.id, info.event),
+                events: fetchEvents
+            });
+            calendar.render();
+
+            $('#saveBtn').click(saveEvent);
+            $('#delBtn').click(deleteEvent);
+            $('#copyBtn').click(copyEvent);
+
+            $('#loginBtnTop').click(() => $('#loginOverlay, #loginForm').show());
+            $('#loginClose, #loginOverlay').click(() => $('#loginOverlay, #loginForm, #loginError').hide());
+            $('#loginSubmit').click(login);
+            $('#logoutBtn').click(logout);
+			$('#loginPass').on('keydown', function(e) {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					$('#loginSubmit').click();
+				}
+			});
+            $('#adminBtn').click(() => window.location.href = 'admin_list.html');
+        });
+        // fetchEvents
+        function fetchEvents(info, success) {
+           if (calendar && typeof calendar.getEvents === 'function') {
+                calendar.getEvents().forEach(ev => ev.remove());
+            }
+            if (!currentUser) return success([]);
+            $.get('http://localhost/events.php', {
+                action: 'list',
+                user: currentUser.username
+            }).done(res => success(res.events));
+        }
+        // openForm
+        function openForm(id, info) {
+            if (!currentUser) return alert('로그인 후 이용');
+            if (id) {
+                $('#formTitle').text('수정');
+                $.get('http://localhost/events.php', {
+                    action: 'get',
+                    id
+                }).done(r => {
+                    const e = r.event;
+                    $('#eventIndex').val(e.id);
+                    $('#type').val(e.type);
+                    $('#title').val(e.title);
+                    $('#location').val(e.location);
+                    $('#start').val(e.start);
+                    $('#end').val(e.end);
+                    $('#participants').val(e.participants);
+                    $('#delBtn,#copyBtn').show();
+                    $('#overlay,#eventForm').show();
+                });
+            } else {
+                $('#formTitle').text('등록');
+                $('#eventIndex').val('');
+                $('#type,#title,#location,#participants').val('');
+                if (info) {
+                    $('#start').val(info.startStr+"T09:00");
+                    $('#end').val(info.endStr+"T09:00" || info.startStr+"T09:00");
+                } else $('#start,#end').val('');
+                $('#delBtn,#copyBtn').hide();
+                $('#overlay,#eventForm').show();
+            }
+        }
+
+        function closeForm() {
+            $('#overlay,#eventForm').hide();
+        }
+        // save
+        function saveEvent() {
+            const id = $('#eventIndex').val() || null;
+            const evt = {
+                id,
+                title: $('#title').val(),
+                start: $('#start').val(),
+                end: $('#end').val(),
+                type: $('#type').val(),
+                location: $('#location').val(),
+                participants: $('#participants').val()
+            };
+            $.post('http://localhost/events.php', {
+                    action: 'save',
+                    event: JSON.stringify(evt),
+                    user: currentUser.username
+                })
+                .done(() => {
+                    calendar.refetchEvents();
+                    closeForm();
+                });
+        }
+        // delete
+        function deleteEvent() {
+            const id = $('#eventIndex').val();
+            if (confirm('삭제?')) {
+                $.post('http://localhost/events.php', {
+                    action: 'delete',
+                    id
+                }).done(() => {
+                    calendar.refetchEvents();
+                    closeForm();
+                });
+            }
+        }
+        // copy
+        function copyEvent() {
+            const id = $('#eventIndex').val();
+            $.post('http://localhost/events.php', {
+                action: 'copy',
+                id
+            }).done(() => {
+                calendar.refetchEvents();
+                closeForm();
+            });
+        }
+		 function login() {
+            $.post('http://localhost/login.php', { username: $('#loginUser').val(), password: $('#loginPass').val() })
+             .done(res => {
+                if (res.success) {
+                    currentUser = res.user;
+                    $('#loginOverlay,#loginForm').hide();
+                    $('#loginBtnTop').hide();
+                    $('#logoutBtn').show();
+                    if (currentUser.role === 'admin') {
+                        $('#adminBtn').show();
+                        localStorage.setItem('admin', JSON.stringify(currentUser));
+                    } else {
+                        sessionStorage.setItem('user', JSON.stringify(currentUser));
+                    }
+                    calendar.refetchEvents();
+                } else {
+                    $('#loginError').show();
+                }
+             });
+        }
+        function logout() {
+            sessionStorage.removeItem('user');
+            localStorage.removeItem('admin');
+            location.reload();
+        }
+   
+    </script>
+</body>
+
+</html>

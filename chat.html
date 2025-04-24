@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>관리자 차트 - 일정 통계</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+	 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    nav { display: flex; gap: 10px; }
+    nav button { padding: 8px 16px; border:none; border-radius:4px; cursor:pointer; }
+    nav .active { background:#008CBA; color:#fff; }
+    h1 { text-align: center; }
+    #chartContainer { max-width: 900px; margin: 40px auto; }
+  </style>
+</head>
+<body>
+<header>
+    <nav>
+      <button id="menuEvents" >전체 일정</button>
+      <button id="menuChart" class="active">통계 차트</button>
+      <button id="menuUsers">사용자 관리</button>
+	  <button id="meunCalendar">달력</button>
+    </nav>
+  </header>
+
+  <h1>일정 일자별 통계</h1>
+  <div id="chartContainer">
+    <canvas id="scheduleChart"></canvas>
+  </div>
+  <script>
+    $(document).ready(function() {
+	  $('#menuEvents').click(() => window.location.href = 'admin_list.html');
+	  $('#menuChart').click(() => window.location.href = 'chat.html');
+	  $('#menuUsers').click(() => window.location.href = 'user_list.html');
+	  $('#meunCalendar').click(() => window.location.href = '/');
+      // 통계 데이터 로드
+      $.get('http://localhost/admin.php', { action: 'stats' }).done(res => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const monthNum = now.getMonth() + 1;
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        // 라벨 생성 (MM-DD)
+        const labels = Array.from({ length: daysInMonth }, (_, i) =>
+          `${String(monthNum).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`
+        );
+        // 이벤트 수 집계
+        const countsMap = {};
+        res.events.forEach(e => {
+          const datePart = e.start.split(' ')[0].slice(5); // MM-DD
+          countsMap[datePart] = (countsMap[datePart] || 0) + 1;
+        });
+        const data = labels.map(l => countsMap[l] || 0);
+        // 차트 렌더링
+        const ctx = document.getElementById('scheduleChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ label: '일정 수', data: data }] },
+          options: {
+            scales: {
+              x: { title: { display: true, text: '날짜 (MM-DD)' } },
+              y: { title: { display: true, text: '개수' }, beginAtZero: true }
+            }
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>
