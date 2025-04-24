@@ -3,15 +3,15 @@ header('Content-Type: application/json');
 require 'classes.php';
 
 $stats = new AdminStats();
-$action = $_REQUEST['action'] ?? '';
+action = $_REQUEST['action'] ?? '';
 
-if ($action === 'stats') {
+if (action === 'stats') {
     echo json_encode($stats->getStats());
     exit;
 }
 
 // 페이징된 전체 일정 조회 (관리자)
-if ($action === 'list') {
+if (action === 'list') {
     $page     = $_GET['page'] ?? 1;
     $pageSize = $_GET['pageSize'] ?? 10;
     $evtMgr   = new EventManager();

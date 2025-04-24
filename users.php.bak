@@ -3,14 +3,14 @@ header('Content-Type: application/json');
 require 'classes.php';
 
 $userMgr = new UserManager();
-$action = $_REQUEST['action'] ?? '';
+action = $_REQUEST['action'] ?? '';
 
 if (action === 'list') {
     $users = $userMgr->listUsers();
     echo json_encode(['users' => $users]);
     exit;
 }
-if ($action === 'save') {
+if (action === 'save') {
     $ok = $userMgr->saveUser(
         $_POST['username'],
         $_POST['password'],
@@ -20,7 +20,7 @@ if ($action === 'save') {
     echo json_encode(['success' => $ok]);
     exit;
 }
-if ($action === 'delete') {
+if (action === 'delete') {
     $ok = $userMgr->deleteUser($_POST['username']);
     echo json_encode(['success' => $ok]);
     exit;

@@ -15,7 +15,7 @@
         #eventForm, #loginForm, #userForm {
             display: none; position: fixed; top:50%; left:50%; transform: translate(-50%, -50%);
             background:#fff; padding:20px; box-shadow:0 2px 10px rgba(0,0,0,0.2); z-index:1001;
-            max-height: 100%; overflow: auto; width: 90%; max-width: 800px;
+            max-height: 100%; overflow: auto; width: 90%; max-width: 400px;
         }
         .btn { padding:5px 10px; margin:2px; cursor:pointer; border:none; border-radius:4px; }
         .btn-add { background:#008CBA; color:#fff; }
@@ -72,21 +72,6 @@
         <div id="loginError" style="color:red; display:none;">로그인 실패</div>
     </div>
 
-    <!-- 사용자 폼 -->
-    <div id="userForm">
-        <button class="btn btn-close" onclick="$('#userForm').hide()">&times;</button>
-        <h3 id="userFormTitle">사용자 등록</h3>
-        <form>
-            <input type="hidden" id="userIndex">
-            <div><label>아이디:</label><input type="text" id="u_username"></div>
-            <div><label>역할:</label><select id="u_role"><option value="user">user</option><option value="admin">admin</option></select></div>
-            <div><label>비밀번호:</label><input type="password" id="u_password"></div>
-            <div>
-                <button type="button" id="userSave" class="btn btn-add">저장</button>
-                <button type="button" id="userDelete" class="btn btn-delete">삭제</button>
-            </div>
-        </form>
-    </div>
     <script>
         let currentUser = null,
         calendar;
@@ -115,7 +100,12 @@
             $('#loginClose, #loginOverlay').click(() => $('#loginOverlay, #loginForm, #loginError').hide());
             $('#loginSubmit').click(login);
             $('#logoutBtn').click(logout);
-
+			$('#loginPass').on('keydown', function(e) {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					$('#loginSubmit').click();
+				}
+			});
             $('#adminBtn').click(() => window.location.href = 'admin_list.html');
         });
         // fetchEvents
@@ -123,45 +113,52 @@
            if (calendar && typeof calendar.getEvents === 'function') {
                 calendar.getEvents().forEach(ev => ev.remove());
             }
-            if (!currentUser) return success([]);
+        
             $.get('http://localhost/events.php', {
-                action: 'list',
-                user: currentUser.username
+                action: 'list'
             }).done(res => success(res.events));
         }
-        // openForm
-        function openForm(id, info) {
-            if (!currentUser) return alert('로그인 후 이용');
-            if (id) {
-                $('#formTitle').text('수정');
-                $.get('http://localhost/events.php', {
-                    action: 'get',
-                    id
-                }).done(r => {
-                    const e = r.event;
-                    $('#eventIndex').val(e.id);
-                    $('#type').val(e.type);
-                    $('#title').val(e.title);
-                    $('#location').val(e.location);
-                    $('#start').val(e.start);
-                    $('#end').val(e.end);
-                    $('#participants').val(e.participants);
-                    $('#delBtn,#copyBtn').show();
-                    $('#overlay,#eventForm').show();
-                });
-            } else {
-                $('#formTitle').text('등록');
-                $('#eventIndex').val('');
-                $('#type,#title,#location,#participants').val('');
-                if (info) {
-                    $('#start').val(info.startStr+"T09:00");
-                    $('#end').val(info.endStr+"T09:00" || info.startStr+"T09:00");
-                } else $('#start,#end').val('');
-                $('#delBtn,#copyBtn').hide();
-                $('#overlay,#eventForm').show();
-            }
-        }
+       
+       function openForm(id, info) {
+			if (!currentUser) return alert('로그인 후 이용해주세요.');
+			console.log(id)
+			if (id) {
+				$('#formTitle').text('일정 수정');
+				$.get('http://localhost/events.php', { action: 'get', id: id }).done(res => {
+					const e = res.event;
+					$('#eventIndex').val(e.id);
+					$('#type').val(e.type);
+					$('#title').val(e.title);
+					$('#location').val(e.location);
+					$('#start').val(e.start);
+					$('#end').val(e.end);
+					$('#participants').val(e.participants);
 
+					// 관리자거나 등록자이면 버튼 표시, 아니면 숨김
+					if (currentUser.role === 'admin' || e.owner === currentUser.username) {
+						$('#delBtn, #copyBtn, #saveBtn').show();
+					} else {
+						$('#delBtn, #copyBtn, #saveBtn').hide();
+					}
+
+					$('#overlay, #eventForm').show();
+				});
+			} else {
+				$('#formTitle').text('일정 등록');
+				$('#eventIndex').val('');
+				$('#type,#title,#location,#participants').val('');
+				if (info && info.startStr) {
+					const dateStr = info.startStr;               // 'YYYY-MM-DD'
+					$('#start').val(dateStr + 'T09:00');         // 'YYYY-MM-DDT00:00'
+					$('#end').val(dateStr + 'T09:00');
+				} else {
+					$('#start,#end').val('');
+				}
+				// 신규 등록 시에는 항상 숨김
+				$('#delBtn, #copyBtn').hide();
+				$('#overlay, #eventForm').show();
+			}
+		}
         function closeForm() {
             $('#overlay,#eventForm').hide();
         }
@@ -214,6 +211,7 @@
 		 function login() {
             $.post('http://localhost/login.php', { username: $('#loginUser').val(), password: $('#loginPass').val() })
              .done(res => {
+				 console.log(res)
                 if (res.success) {
                     currentUser = res.user;
                     $('#loginOverlay,#loginForm').hide();
