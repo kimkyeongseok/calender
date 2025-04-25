@@ -35,13 +35,23 @@ class UserManager {
     }
 
     public function authenticate($username, $password) {
-        $sql = 'SELECT username, role FROM users WHERE username=? AND password=?';
-        $stmt = $this->conn->prepare($sql);
-        $stmt->bind_param('ss', $username, $password);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        return $res->fetch_assoc();
-    }
+		// DB에서 해시된 비밀번호 함께 조회
+		$sql = 'SELECT username, role, password FROM users WHERE username = ?';
+		$stmt = $this->conn->prepare($sql);
+		$stmt->bind_param('s', $username);
+		$stmt->execute();
+		$res = $stmt->get_result();
+		$row = $res->fetch_assoc();
+		$stmt->close();
+
+		// 해시 검증
+		if ($row && password_verify($password, $row['password'])) {
+			// 패스워드 정보 제거 후 반환
+			unset($row['password']);
+			return ['username' => $row['username'], 'role' => $row['role']];
+		}
+		return false;
+	}
 
     public function listUsers() {
         $res = $this->conn->query('SELECT username, role FROM users');
@@ -49,21 +59,27 @@ class UserManager {
     }
 
     public function saveUser($username, $password, $role, $isEdit = null) {
+        // 1) 비밀번호 해시화
+        $hashed = $password ? password_hash($password, PASSWORD_DEFAULT) : null;
+
         if ($isEdit) {
+            // 수정 모드: 비밀번호를 갱신할 경우에만 해시된 값을 사용
             if ($password) {
-                $sql = 'UPDATE users SET password=?, role=? WHERE username=?';
+                $sql = 'UPDATE users SET password = ?, role = ? WHERE username = ?';
                 $stmt = $this->conn->prepare($sql);
-                $stmt->bind_param('sss', $password, $role, $isEdit);
+                $stmt->bind_param('sss', $hashed, $role, $isEdit);
             } else {
-                $sql = 'UPDATE users SET role=? WHERE username=?';
+                $sql = 'UPDATE users SET role = ? WHERE username = ?';
                 $stmt = $this->conn->prepare($sql);
                 $stmt->bind_param('ss', $role, $isEdit);
             }
         } else {
-            $sql = 'INSERT INTO users (username,password,role) VALUES (?,?,?)';
+            // 신규 등록 모드: 반드시 해시된 비밀번호를 저장
+            $sql = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)';
             $stmt = $this->conn->prepare($sql);
-            $stmt->bind_param('sss', $username, $password, $role);
+            $stmt->bind_param('sss', $username, $hashed, $role);
         }
+
         $stmt->execute();
         return $stmt->affected_rows > 0;
     }

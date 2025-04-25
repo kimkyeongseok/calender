@@ -49,21 +49,27 @@ class UserManager {
     }
 
     public function saveUser($username, $password, $role, $isEdit = null) {
+        // 1) 비밀번호 해시화
+        $hashed = $password ? password_hash($password, PASSWORD_DEFAULT) : null;
+
         if ($isEdit) {
+            // 수정 모드: 비밀번호를 갱신할 경우에만 해시된 값을 사용
             if ($password) {
-                $sql = 'UPDATE users SET password=?, role=? WHERE username=?';
+                $sql = 'UPDATE users SET password = ?, role = ? WHERE username = ?';
                 $stmt = $this->conn->prepare($sql);
-                $stmt->bind_param('sss', $password, $role, $isEdit);
+                $stmt->bind_param('sss', $hashed, $role, $isEdit);
             } else {
-                $sql = 'UPDATE users SET role=? WHERE username=?';
+                $sql = 'UPDATE users SET role = ? WHERE username = ?';
                 $stmt = $this->conn->prepare($sql);
                 $stmt->bind_param('ss', $role, $isEdit);
             }
         } else {
-            $sql = 'INSERT INTO users (username,password,role) VALUES (?,?,?)';
+            // 신규 등록 모드: 반드시 해시된 비밀번호를 저장
+            $sql = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)';
             $stmt = $this->conn->prepare($sql);
-            $stmt->bind_param('sss', $username, $password, $role);
+            $stmt->bind_param('sss', $username, $hashed, $role);
         }
+
         $stmt->execute();
         return $stmt->affected_rows > 0;
     }
@@ -84,24 +90,18 @@ class EventManager {
         $this->conn = Database::getInstance()->getConnection();
     }
 
-    public function listEvents($user = null, $page = 1, $pageSize = 10) {
+    public function listEvents($page = 1, $pageSize = 10) {
         $offset = ($page - 1) * $pageSize;
-        if ($user === 'admin') {
-            $total = $this->conn->query('SELECT COUNT(*) AS cnt FROM events')->fetch_assoc()['cnt'];
-            $stmt  = $this->conn->prepare('SELECT * FROM events ORDER BY start DESC LIMIT ?,?');
-            $stmt->bind_param('ii', $offset, $pageSize);
-        } else {
-            $stmt0 = $this->conn->prepare('SELECT COUNT(*) AS cnt FROM events WHERE owner=?');
-            $stmt0->bind_param('s', $user);
-            $stmt0->execute();
-            $total = $stmt0->get_result()->fetch_assoc()['cnt'];
-            $stmt0->close();
-            $stmt = $this->conn->prepare('SELECT * FROM events WHERE owner=? ORDER BY start DESC LIMIT ?,?');
-            $stmt->bind_param('sii', $user, $offset, $pageSize);
-        }
+        // Total count
+        $totalRes = $this->conn->query('SELECT COUNT(*) AS cnt FROM events');
+        $total = (int)$totalRes->fetch_assoc()['cnt'];
+        // Fetch events
+        $stmt = $this->conn->prepare('SELECT * FROM events ORDER BY start DESC LIMIT ?, ?');
+        $stmt->bind_param('ii', $offset, $pageSize);
         $stmt->execute();
         $events = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        return ['total' => (int)$total, 'events' => $events];
+        $stmt->close();
+        return ['total' => $total, 'events' => $events];
     }
 
     public function getEvent($id) {
